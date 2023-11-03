@@ -20,10 +20,14 @@ data ColourType = Greyscale Bool | Truecolour Bool | IndexedColour
     deriving (Show)
 data ImageType = ImageType {colourType :: ColourType, bitDepth :: BitDepth}
 data ImageHeader = ImageHeader {width :: Word32, height :: Word32, imageType :: ImageType, interlace :: Bool}
+newtype RGB a = RGB (a, a, a)
+data PaletteHeader = PaletteHeader
 data Chunk = IHDR ImageHeader | PLTE
 
 pPNGBytestream :: Parser [Chunk]
-pPNGBytestream = string (B.pack [137, 80, 78, 71, 13, 10, 26, 10]) *> many pChunk
+pPNGBytestream = pngSignature *> many pChunk
+  where
+    pngSignature = string (B.pack [137, 80, 78, 71, 13, 10, 26, 10]) <?> "png signature"
 
 pChunk :: Parser Chunk
 pChunk = do
@@ -37,14 +41,15 @@ pChunk = do
 pImageHeaderData :: Parser ImageHeader
 pImageHeaderData =
     ImageHeader
-        <$> word32be
-        <*> word32be
+        <$> word32be -- width
+        <*> word32be -- heigth
         <*> parseImageType
-        <* count 2 (char 0) -- compression and filter method
-        <*> pBool
+        <* (char 0 <?> "compression method")
+        <* (char 0 <?> "filter method")
+        <*> (pBool <?> "interlace method")
 
 pBool :: Parser Bool
-pBool = (== 1) <$> (char 0 <|> char 1)
+pBool = (== 1) <$> (char 0 <|> char 1) <?> "bool (0 or 1)"
 
 parseImageType :: Parser ImageType
 parseImageType = do
