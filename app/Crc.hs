@@ -21,7 +21,7 @@ crcTable = V.fromListN 256 $ map (fpow 8 cFunc) [0 .. 255]
 updateCrc :: Word32 -> B.ByteString -> Word32
 updateCrc = B.foldl' update
   where
-    idx c byte = fromIntegral $ (c .^. fromIntegral byte) .&. maxBound
+    idx c byte = fromIntegral $ (c .^. fromIntegral byte) .&. 0xff
     update c byte = (crcTable ! idx c byte) .^. (c .>>. 8)
 
 crc :: B.ByteString -> Word32

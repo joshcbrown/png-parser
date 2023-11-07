@@ -1,8 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main where
 
-import Data.Typeable (typeOf)
+import qualified Data.ByteString.Lazy as B
+import Data.Functor
+import Parser (Parser, pPNGBytestream)
+import Text.Megaparsec (errorBundlePretty, runParser)
 
 main :: IO ()
-main = putStrLn "Hello, world!"
+main = do
+    f <- B.readFile "asset.png"
+    let res = runParser pPNGBytestream "asset.png" f
+    case res of
+        Left e -> putStrLn $ errorBundlePretty e
+        Right im -> putStrLn "yay!"

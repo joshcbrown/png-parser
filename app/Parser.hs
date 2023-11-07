@@ -16,6 +16,7 @@ import Data.Word
 import Text.Megaparsec hiding (State)
 import Text.Megaparsec.Byte
 import Text.Megaparsec.Byte.Binary
+import Text.Megaparsec.Debug (MonadParsecDbg (dbg))
 
 type Parser = Parsec Void B.ByteString
 type BitDepth = Int8
@@ -25,14 +26,18 @@ type Palette = V.Vector RGB
 data ColourType = Greyscale Bool | Truecolour Bool | IndexedColour
     deriving (Show)
 data ImageType = ImageType {colourType :: ColourType, bitDepth :: BitDepth}
+    deriving (Show)
 data ImageHeader = ImageHeader {width :: Word32, height :: Word32, imageType :: ImageType, interlace :: Bool}
+    deriving (Show)
 data PNGImage = PNGImage {header :: ImageHeader, palette :: Maybe Palette}
+    deriving (Show)
 
 pPNGBytestream :: Parser PNGImage
 pPNGBytestream = do
     pngSignature
-    header <- pImageHeader
-    palette <- optional $ pPalette header
+    header <- dbg "header" pImageHeader
+    _ <- dbg "unsupported" $ many pUnsupported
+    palette <- dbg "palette" $ optional $ pPalette header
     pure $ PNGImage{..}
   where
     pngSignature = string (B.pack [137, 80, 78, 71, 13, 10, 26, 10]) <?> "png signature"
@@ -43,13 +48,43 @@ pImageHeader = pChunk "IHDR" $ const pImageHeaderData
 pPalette :: ImageHeader -> Parser Palette
 pPalette = pChunk "PLTE" . pPaletteData
 
-pChunk :: B.ByteString -> (Int -> Parser a) -> Parser a
+unsupported :: [B.ByteString]
+unsupported =
+    [ "tRNS"
+    , "cHRM"
+    , "gAMA"
+    , "iCCP"
+    , "sBIT"
+    , "sRGB"
+    , "cICP"
+    , "mDCv"
+    , "cLLi"
+    , "tEXt"
+    , "zTXt"
+    , "iTXt"
+    , "bKGD"
+    , "hIST"
+    , "pHYs"
+    , "sPLT"
+    , "eXlf"
+    , "tIME"
+    , "acTL"
+    , "fcTL"
+    , "fdAT"
+    ]
+
+pUnsupported :: Parser ()
+pUnsupported = pChunk unsupportedName (\length -> count length anySingle $> ())
+  where
+    unsupportedName = dbg "name" (choice (string <$> unsupported))
+
+pChunk :: Parser B.ByteString -> (Int -> Parser a) -> Parser a
 pChunk chunkName pData = do
-    -- this is ok as PNG spec says that unsigned 32 bit ints will
-    -- never cause overflow in signed
+    -- this should be ok as PNG spec says that unsigned 32 bit ints will
+    -- never exceed 2^31 - 1
     chunkLength <- fromIntegral <$> word32be
-    lookAhead $ crcCheck chunkLength
-    string chunkName
+    -- lookAhead $ crcCheck chunkLength
+    chunkName
     -- discard cyclic redundancy check, assuming data isn't corrupt for now
     pData chunkLength <* count 4 anySingle
 
@@ -125,10 +160,3 @@ allowedImageType :: ColourType -> BitDepth -> Bool
 allowedImageType (Greyscale False) = flip elem [1, 2, 4, 8, 16]
 allowedImageType IndexedColour = flip elem [1, 2, 4, 8]
 allowedImageType _ = flip elem [8, 16]
-
-check :: Parser Bool -> Parser a -> Parser a
-check condition parser = do
-    result <- lookAhead condition
-    if result
-        then parser
-        else fail "Check failed"
