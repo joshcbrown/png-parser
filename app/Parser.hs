@@ -35,9 +35,9 @@ data PNGImage = PNGImage {header :: ImageHeader, palette :: Maybe Palette}
 pPNGBytestream :: Parser PNGImage
 pPNGBytestream = do
     pngSignature
-    header <- dbg "header" pImageHeader
-    _ <- dbg "unsupported" $ many pUnsupported
-    palette <- dbg "palette" $ optional $ pPalette header
+    header <- pImageHeader
+    many $ try pUnsupported
+    palette <- optional $ try $ pPalette header
     pure $ PNGImage{..}
   where
     pngSignature = string (B.pack [137, 80, 78, 71, 13, 10, 26, 10]) <?> "png signature"
@@ -76,21 +76,22 @@ unsupported =
 pUnsupported :: Parser ()
 pUnsupported = pChunk unsupportedName (\length -> count length anySingle $> ())
   where
-    unsupportedName = dbg "name" (choice (string <$> unsupported))
+    unsupportedName = choice $ string <$> unsupported
 
 pChunk :: Parser B.ByteString -> (Int -> Parser a) -> Parser a
 pChunk chunkName pData = do
     -- this should be ok as PNG spec says that unsigned 32 bit ints will
     -- never exceed 2^31 - 1
-    chunkLength <- fromIntegral <$> word32be
-    -- lookAhead $ crcCheck chunkLength
+    dataLength <- fromIntegral <$> word32be
+    lookAhead $ crcCheck dataLength
     chunkName
-    -- discard cyclic redundancy check, assuming data isn't corrupt for now
-    pData chunkLength <* count 4 anySingle
+    -- discard cyclic redundancy check, already checked before
+    pData dataLength <* count 4 anySingle
 
 crcCheck :: Int -> Parser ()
-crcCheck length = do
-    chunkData <- B.pack <$> count length anySingle
+crcCheck dataLength = do
+    let length = 4 + dataLength -- account for chunk name
+    chunkData <- B.pack <$> count dataLength anySingle
     expectedCrc <- word32be
     when (crc chunkData /= expectedCrc) $ fail "data corrupt, CRC check failed"
 

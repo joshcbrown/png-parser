@@ -11,4 +11,4 @@ main = do
     let res = runParser pPNGBytestream "asset.png" f
     case res of
         Left e -> putStrLn $ errorBundlePretty e
-        Right im -> putStrLn "yay!"
+        Right im -> print im
