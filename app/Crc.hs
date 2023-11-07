@@ -3,7 +3,7 @@ module Crc (crc) where
 -- CRC check implemented as specified in PNG specification annex D
 
 import Data.Bits
-import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as B
 import Data.List (foldl')
 import Data.Vector ((!))
 import qualified Data.Vector as V

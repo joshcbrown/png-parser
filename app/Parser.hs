@@ -4,12 +4,13 @@
 module Parser where
 
 import Control.Monad.State
+import Crc (crc)
 import Data.Bits
 import qualified Data.ByteString.Lazy as B
 import Data.Functor
 import Data.Int (Int32, Int8)
-import qualified Data.Map as M
 import Data.Maybe (catMaybes)
+import qualified Data.Vector as V
 import Data.Void
 import Data.Word
 import Text.Megaparsec hiding (State)
@@ -19,7 +20,7 @@ import Text.Megaparsec.Byte.Binary
 type Parser = Parsec Void B.ByteString
 type BitDepth = Int8
 type RGB = (Word8, Word8, Word8)
-type Palette = M.Map Int RGB
+type Palette = V.Vector RGB
 
 data ColourType = Greyscale Bool | Truecolour Bool | IndexedColour
     deriving (Show)
@@ -42,12 +43,21 @@ pImageHeader = pChunk "IHDR" $ const pImageHeaderData
 pPalette :: ImageHeader -> Parser Palette
 pPalette = pChunk "PLTE" . pPaletteData
 
-pChunk :: B.ByteString -> (Word32 -> Parser a) -> Parser a
+pChunk :: B.ByteString -> (Int -> Parser a) -> Parser a
 pChunk chunkName pData = do
-    chunkLength <- word32be
+    -- this is ok as PNG spec says that unsigned 32 bit ints will
+    -- never cause overflow in signed
+    chunkLength <- fromIntegral <$> word32be
+    lookAhead $ crcCheck chunkLength
     string chunkName
     -- discard cyclic redundancy check, assuming data isn't corrupt for now
     pData chunkLength <* count 4 anySingle
+
+crcCheck :: Int -> Parser ()
+crcCheck length = do
+    chunkData <- B.pack <$> count length anySingle
+    expectedCrc <- word32be
+    when (crc chunkData /= expectedCrc) $ fail "data corrupt, CRC check failed"
 
 -- TODO: add support for 1, 2, 4 bit depths
 --
@@ -62,9 +72,10 @@ pSample bitDepth = do
         16 -> fromIntegral . (.>>. 8) <$> word16be
         _ -> fail $ "Unsupported bit depth: " ++ show bitDepth
 
-pPaletteData :: ImageHeader -> Word32 -> Parser Palette
-pPaletteData hdr n = M.fromList . zip [1 ..] <$> count (fromIntegral n `div` 3) pixel
+pPaletteData :: ImageHeader -> Int -> Parser Palette
+pPaletteData hdr dataLength = V.fromListN nPixels <$> count nPixels pixel
   where
+    nPixels = dataLength `div` 3
     depth = (bitDepth . imageType) hdr
     sample = pSample depth
     pixel = (,,) <$> sample <*> sample <*> sample
