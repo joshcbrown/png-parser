@@ -91,7 +91,7 @@ pChunk chunkName pData = do
 crcCheck :: Int -> Parser ()
 crcCheck dataLength = do
     let length = 4 + dataLength -- account for chunk name
-    chunkData <- B.pack <$> count dataLength anySingle
+    chunkData <- B.pack <$> count length anySingle
     expectedCrc <- word32be
     when (crc chunkData /= expectedCrc) $ fail "data corrupt, CRC check failed"
 
