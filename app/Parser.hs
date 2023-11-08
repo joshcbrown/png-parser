@@ -10,7 +10,7 @@ import Data.Bits
 import qualified Data.ByteString.Lazy as L
 import Data.Functor
 import Data.Int (Int32, Int8)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 import qualified Data.Vector as V
 import Data.Void
 import Data.Word
@@ -38,7 +38,7 @@ pPNGBytestream = do
     pngSignature
     header <- pImageHeader
     many $ try pUnsupported
-    palette <- optional $ try $ pPalette header
+    palette <- optional $ try (pPalette header)
     rawData <- Z.decompress . L.concat <$> many (try pImageData)
     pImageEnd
     pure $ PNGImage{..}
@@ -99,6 +99,16 @@ pChunk chunkName pData = do
 
 pRawData :: Int -> Parser L.ByteString
 pRawData n = L.pack <$> count n anySingle
+
+-- | will fail if there are less than n bytes left in the input
+pRawData' :: Int -> Parser L.ByteString
+pRawData' n = do
+    o <- getOffset
+    s <- getInput
+    let (res, rest) = fromJust (takeN_ n s)
+    setInput rest
+    setOffset (o + n)
+    return res
 
 crcCheck :: Int -> Parser ()
 crcCheck dataLength = do
