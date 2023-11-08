@@ -33,6 +33,7 @@ executable ptc
     build-depends:
         base ^>=4.17.2.0,
         megaparsec>=9.5.0,
+        zlib>=0.6.3.0,
         bytestring,
         vector,
         containers,
